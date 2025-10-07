@@ -5,7 +5,7 @@ void main() {
   runApp(
     MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: NortheasternTranslator(), // เรียก UI หลักที่เราสร้าง
+      home: MyApp(), // เรียก UI หลักที่เราสร้าง
     ),
   );
 }

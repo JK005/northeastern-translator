@@ -8,6 +8,7 @@ plugins {
 android {
     namespace = "com.example.myproject"
     compileSdk = flutter.compileSdkVersion
+    buildToolsVersion = "33.0.2"
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -28,6 +29,10 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+        }
     }
 
     buildTypes {
