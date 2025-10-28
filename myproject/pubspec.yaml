@@ -40,6 +40,7 @@ dependencies:
   flutter_screenutil: ^5.8.4
   permission_handler: ^11.0.0
   shared_preferences: ^2.2.2
+  share_plus: ^7.0.2
 
 
 dev_dependencies:
@@ -53,6 +54,10 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
 
+fonts:
+  - family: Prompt
+    fonts:
+      - asset: assets/fonts/Prompt-Regular.ttf
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

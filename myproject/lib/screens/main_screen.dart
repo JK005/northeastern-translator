@@ -9,6 +9,8 @@ import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../favorite_page.dart'; //หน้า Favorite คำที่ชื่นชอบ
+import 'dart:ui'; // สำหรับ BackdropFilter
 
 void main() {
   runApp(const MyApp());
@@ -212,10 +214,28 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
   }
 }
 
-
   void _stopListening() async {
     await speech.stop();
     setState(() => isListening = false);
+  }
+
+  Future<bool> _isFavorite(String isan, String thai) async {
+    final prefs = await SharedPreferences.getInstance();
+    final favStrings = prefs.getStringList('favorites') ?? [];
+    return favStrings.contains('$isan|$thai');
+  }
+
+  void _checkFavoriteStatus() async {
+    final isan = inputController.text.trim();
+    final thai = outputController.text.trim();
+
+    if (isan.isEmpty || thai.isEmpty) {
+      setState(() => isFavorite = false); //ถ้าลบข้อความ → รีเซ็ตดาว
+      return;
+    }
+
+    final exists = await _isFavorite(isan, thai);
+    setState(() => isFavorite = exists); //ถ้าเคยบันทึก → ดาวเป็นสีเหลือง
   }
 
   Future<void> _speak(String text) async {
@@ -298,62 +318,85 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
 
   // Drawer แสดงคำโปรด
   Widget _buildDrawer() {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          const DrawerHeader(
-            decoration: BoxDecoration(color: Colors.green),
-            child: Text(
-              "เมนูการตั้งค่า",
-              style: TextStyle(color: Colors.white, fontSize: 20),
-            ),
+  return Drawer(
+    child: ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        const DrawerHeader(
+          decoration: BoxDecoration(color: Colors.green),
+          child: Text(
+            "เมนูหลัก",
+            style: TextStyle(color: Colors.white, fontSize: 20),
           ),
-          ListTile(
-            title: const Text("ปรับความเร็วเสียง"),
-            subtitle: Slider(
-              value: ttsSpeed,
-              min: 0.2,
-              max: 1.0,
-              divisions: 8,
-              label: ttsSpeed.toStringAsFixed(2),
-              onChanged: (value) {
-                setState(() {
-                  ttsSpeed = value;
-                });
-              },
-            ),
+        ),
+
+        // หมวด: การตั้งค่า
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Text("การตั้งค่า", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ),
+        ListTile(
+          title: const Text("ปรับความเร็วเสียง"),
+          subtitle: Slider(
+            value: ttsSpeed,
+            min: 0.2,
+            max: 1.0,
+            divisions: 8,
+            label: ttsSpeed.toStringAsFixed(2),
+            onChanged: (value) {
+              setState(() {
+                ttsSpeed = value;
+              });
+            },
           ),
-          const Divider(),
-          const ListTile(title: Text("คำศัพท์ที่ชอบ")),
-          ...favoriteWords.map(
-            (word) => Dismissible(
-              key: ValueKey('${word["isan"]}|${word["thai"]}'),
-              direction: DismissDirection.endToStart,
-              onDismissed: (_) {
-                setState(() {
-                  favoriteWords.remove(word);
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("ลบคำออกจากคำโปรดแล้ว")),
-                );
-              },
-              background: Container(
-                color: Colors.red,
-                alignment: Alignment.centerRight,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: const Icon(Icons.delete, color: Colors.white),
-              ),
-              child: ListTile(
-                title: Text("${word["isan"]} → ${word["thai"]}"),
-                trailing: const Icon(Icons.star, color: Colors.amber),
-              ),
-            ),
+        ),
+
+        const Divider(),
+
+        // หมวด: คำโปรด
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Text("คำโปรด", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ),
+        Card(
+          elevation: 2,
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ListTile(
+            leading: const Icon(Icons.star, color: Colors.amber),
+            title: const Text("รายการคำโปรด"),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FavoritePage()),
+              );
+            },
           ),
-        ],
-      ),
-    );
-  }
+        ),
+
+        const Divider(),
+
+        // หมวด: เกี่ยวกับแอป
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Text("เกี่ยวกับแอป", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ),
+        ListTile(
+          leading: const Icon(Icons.info_outline),
+          title: const Text("เวอร์ชันแอป"),
+          subtitle: const Text("v1.0.0"),
+        ),
+        ListTile(
+          leading: const Icon(Icons.feedback_outlined),
+          title: const Text("ส่งคำแนะนำ"),
+          onTap: () {
+            // เปิดหน้า feedback หรือส่งอีเมล
+          },
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildLanguageSwitcher(double screenWidth) {
     return Row(
@@ -397,81 +440,92 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
   }
 
   Widget _buildTextBox({
-    required String label,
-    required TextEditingController controller,
-    required bool readOnly,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(fontSize: 16.sp)),
-        SizedBox(height: 6.h),
-        Container(
-          height: 180.h,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: Colors.grey),
-            borderRadius: BorderRadius.circular(8.r),
-          ),
-          child: Stack(
-            children: [
-              TextField(
-                controller: controller,
-                readOnly: readOnly,
-                maxLines: null,
-                expands: true,
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.fromLTRB(16, 20, 48, 60),
+  required String label,
+  required TextEditingController controller,
+  required bool readOnly,
+}) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: TextStyle(fontSize: 16.sp)),
+      SizedBox(height: 6.h),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(16.r),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            height: 180.h,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.85),
+              borderRadius: BorderRadius.circular(16.r),
+              border: Border.all(color: Colors.black, width: 1.5), // กรอบสีดำ
+            ),
+            child: Stack(
+              children: [
+                TextField(
+                  controller: controller,
+                  readOnly: readOnly,
+                  maxLines: null,
+                  expands: true,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.fromLTRB(16, 20, 48, 60),
+                  ),
+                  style: TextStyle(
+                    fontSize: readOnly ? 16.sp : 18.sp,
+                    color: Colors.black,
+                  ),
                 ),
-                style: TextStyle(fontSize: readOnly ? 16.sp : 18.sp),
-              ),
-              Positioned(
-                bottom: 8.h,
-                left: 8.w,
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.volume_up),
-                      onPressed: () => _speak(controller.text),
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.star,
-                        color: isFavorite ? Colors.amber : Colors.grey,
+                Positioned(
+                  bottom: 8.h,
+                  left: 8.w,
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.volume_up, color: Colors.black), // ลำโพง
+                        onPressed: () => _speak(controller.text),
                       ),
-                      tooltip:
-                          isFavorite
-                              ? 'กดอีกครั้งเพื่อลบคำออกจากคำที่ชื่นชอบ'
-                              : 'บันทึกคำที่ชื่นชอบ',
-                      onPressed: () async {
-                        if (inputController.text.isNotEmpty &&
-                            outputController.text.isNotEmpty) {
-                          await _toggleFavorite(
-                            inputController.text,
-                            outputController.text,
+                      IconButton(
+                        icon: Icon(
+                          Icons.star,
+                          color: isFavorite ? Colors.amber : Colors.black,
+                        ),
+                        tooltip: isFavorite
+                            ? 'กดอีกครั้งเพื่อลบคำออกจากคำโปรด'
+                            : 'บันทึกคำโปรด',
+                        onPressed: () async {
+                          if (inputController.text.isNotEmpty &&
+                              outputController.text.isNotEmpty) {
+                            await _toggleFavorite(
+                              inputController.text,
+                              outputController.text,
+                            );
+                            _checkFavoriteStatus(); // อัปเดตสถานะดาวหลังบันทึก
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.copy, color: Colors.black), // คัดลอก
+                        onPressed: () {
+                          Clipboard.setData(
+                              ClipboardData(text: controller.text));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("คัดลอกข้อความแล้ว")),
                           );
-                        }
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.copy),
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: controller.text));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("คัดลอกข้อความแล้ว")),
-                        );
-                      },
-                    ),
-                  ],
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -553,21 +607,26 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
                         ),
                       ),
                       SizedBox(width: 12.w),
-                      ElevatedButton(
-                        onPressed:
-                            isListening ? _stopListening : _startListening,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              isListening ? Colors.red[300] : Colors.grey[300],
-                          shape: const CircleBorder(),
-                          padding: EdgeInsets.all(19.r), //ขนาดปุ่มไมล์
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        transitionBuilder: (child, animation) =>
+                            ScaleTransition(scale: animation, child: child),
+                        child: ElevatedButton(
+                          key: ValueKey(isListening), // สำคัญสำหรับ AnimatedSwitcher
+                          onPressed: isListening ? _stopListening : _startListening,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isListening ? Colors.red[400] : Colors.green[400],
+                            shape: const CircleBorder(),
+                            padding: EdgeInsets.all(19.r), //ขนาดปุ่มไมล์
+                            elevation: 6,
+                          ),
+                          child: Icon(
+                            isListening ? Icons.stop : Icons.mic,
+                            color: Colors.white,
+                            size: 32.r,
+                          ),
                         ),
-                        child: Icon(
-                          isListening ? Icons.stop : Icons.mic,
-                          color: Colors.black,
-                          size: 32.r,
-                        ),
-                      ),
+                      )
                     ],
                   ),
                 ],
