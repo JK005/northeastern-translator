@@ -7,7 +7,7 @@
 
     
     <application
-        android:label="myproject"
+        android:label="Northeastern Translator"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
