@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:http/http.dart' as http;
+import 'package:myproject/about_page.dart';
+import 'package:myproject/limitation_page.dart';
 import 'package:myproject/services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -60,7 +62,9 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
   String listen = 'กำลังรอฟัง...';
   List<Map<String, String>> favoriteWords = [];
   bool isFavorite = false;
+  // ignore: unused_field
   String _sttBuffer = '';
+  // ignore: unused_field
   final String _lastFinal = '';
 
   @override
@@ -383,14 +387,21 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
         ),
         ListTile(
           leading: const Icon(Icons.info_outline),
-          title: const Text("เวอร์ชันแอป"),
-          subtitle: const Text("v1.0.0"),
+          title: const Text("เกี่ยวกับแอป"),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AboutPage()),
+            );
+          },
         ),
         ListTile(
-          leading: const Icon(Icons.feedback_outlined),
-          title: const Text("ส่งคำแนะนำ"),
+          leading: const Icon(Icons.warning_amber_outlined),
+          title: const Text("ข้อจำกัดของแอปพลิเคชัน"),
+          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
           onTap: () {
-            // เปิดหน้า feedback หรือส่งอีเมล
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const LimitationPage()),
+            );
           },
         ),
       ],
@@ -457,6 +468,7 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
             duration: const Duration(milliseconds: 300),
             height: 180.h,
             decoration: BoxDecoration(
+              // ignore: deprecated_member_use
               color: Colors.white.withOpacity(0.85),
               borderRadius: BorderRadius.circular(16.r),
               border: Border.all(color: Colors.black, width: 1.5), // กรอบสีดำ
