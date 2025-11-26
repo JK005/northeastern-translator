@@ -19,7 +19,8 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        final List<dynamic> thaiList = data["translated_text"]["output"]["thai"];
+        final List<dynamic> thaiList =
+            data["translated_text"]["output"]["thai"];
         return thaiList.join(""); // รวมผลแปล
       } else {
         throw Exception("ไม่สามารถแปลได้: ${response.statusCode}");
@@ -42,7 +43,8 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        final List<dynamic> isanList = data["translated_text"]["output"]["isan"];
+        final List<dynamic> isanList =
+            data["translated_text"]["output"]["isan"];
         return isanList.join(""); // รวมผลแปล
       } else {
         throw Exception("ไม่สามารถแปลได้: ${response.statusCode}");
