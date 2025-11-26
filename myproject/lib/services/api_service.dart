@@ -5,7 +5,7 @@ class ApiService {
   //  กำหนด baseUrl ให้เหมาะกับ environment
   // Android Emulator → http://10.0.2.2:8000
   // มือถือจริง      → http://192.168.1.113:8000  IP Address:8000 สามารถเปลี่ยนได้ตาม wifi ที่เชื่อม
-  static const String baseUrl = "http://192.168.1.113:8000";
+  static const String baseUrl = "http://178.128.179.115:8000";
 
   // ฟังก์ชันแปลจากอีสาน → ไทย
   static Future<String> translateIsanToThai(String inputText) async {
