@@ -7,10 +7,10 @@ from fuzzywuzzy import fuzz
 db = mysql.connector.connect(
     host="localhost",
     user="root",
-    password="0168", 
+    password="ksjd_pdeof0_fk30s2p9", 
     database="local_translator"
 )
-cursor = db.cursor()
+cursor = db.cursor(dictionary=True)
 
 # ฟังก์ชันตัดคำภาษาไทย/อีสาน
 def tokenize_text(text: str):

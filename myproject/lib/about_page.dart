@@ -25,7 +25,7 @@ class AboutPage extends StatelessWidget {
                 children: [
                   const ListTile(
                     leading: Icon(Icons.info_outline),
-                    title: Text("ชื่อแอปพลิเคชัน: แปลภาษาอีสานเป็นภาษาไทยกลาง"),
+                    title: Text("ชื่อแอปพลิเคชัน: แปลภาษาอีสานเป็นภาษาไทยกลาง\nNortheastern Translator"),
                     subtitle: Text("เวอร์ชัน: 1.0.0"),
                   ),
                   const Divider(),

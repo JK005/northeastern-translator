@@ -41,11 +41,19 @@ dependencies:
   permission_handler: ^11.0.0
   shared_preferences: ^2.2.2
   share_plus: ^7.0.2
+  sqflite: ^2.4.2
+  path: ^1.8.3
 
 
 dev_dependencies:
+  flutter_launcher_icons: ^0.13.1
   flutter_test:
     sdk: flutter
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon.png"
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -63,7 +71,9 @@ fonts:
 
 # The following section is specific to Flutter packages.
 flutter:
-
+  assets:
+    - assets/icon.png
+    - assets/isan_thai_dictionary.db
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

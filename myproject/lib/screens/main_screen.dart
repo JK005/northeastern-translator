@@ -265,9 +265,9 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
 
   Future<void> _translateText() async {
   try {
-    // เรียกผ่าน ApiService ตามทิศทางการแปล
+    // เรียกผ่าน Service ตามทิศทางการแปล
     final translated = isThaiToIsan
-        ? await ApiService.translateThaiToIsan(inputController.text)
+        ? await ApiService.translateThaiToIsan(inputController.text) 
         : await ApiService.translateIsanToThai(inputController.text);
 
     // โหลด favorites จาก SharedPreferences
