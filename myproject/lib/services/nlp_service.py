@@ -5,10 +5,10 @@ from fuzzywuzzy import fuzz
 
 # เชื่อมต่อฐานข้อมูล MySQL
 db = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="ksjd_pdeof0_fk30s2p9", 
-    database="local_translator"
+    host="178.128.179.115",       # IP ของ Droplet
+    user="appdb",                 # user ที่คุณสร้างใน MySQL
+    password="strongpassword092", # รหัสที่คุณตั้งจริง
+    database="local_translator"   # ชื่อฐานข้อมูล
 )
 cursor = db.cursor(dictionary=True)
 
