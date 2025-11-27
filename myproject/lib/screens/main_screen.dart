@@ -77,8 +77,11 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
     _loadFavorites();
   }
 
-  void _requestPermission() async {
-    await Permission.microphone.request();
+  Future<void> _requestPermission() async {
+    var status = await Permission.microphone.status;
+    if (!status.isGranted) {
+      await Permission.microphone.request();
+    }
   }
 
   void _initSpeech() async {
@@ -97,97 +100,36 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
       onError: (error) => debugPrint('onError: $error'),
     );
     debugPrint("Speech available: $available");
-
-    if (available) {
-      // ตรวจสอบ locale ที่รองรับ
-      var systemLocales = await speech.locales();
-      debugPrint("Locales available: $systemLocales");
-
-      // เลือก locale ไทยถ้ามี ไม่งั้น fallback เป็น default
-      final thLocale = systemLocales.firstWhere(
-        (l) => l.localeId.startsWith("th"),
-        orElse: () => systemLocales.first,
-      );
-
-      // ถ้าไม่ใช่ th_TH ให้แจ้งผู้ใช้
-      if (!thLocale.localeId.startsWith("th")) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                "อุปกรณ์นี้ไม่รองรับการฟังเสียงภาษาไทย กำลังใช้ค่าเริ่มต้นแทน",
-              ),
-            ),
-          );
-        }
-      }
-
-      setState(() {
-        isListening = true;
-      });
-
-      speech.listen(
-        onResult: (result) {
-          setState(() {
-            listen = result.recognizedWords;
-          });
-        },
-        localeId: thLocale.localeId, // ใช้ locale ที่รองรับจริง
-      );
-    } else {
-      debugPrint("Speech recognition not available");
-    }
   }
 
   void _startListening() async {
-  if (!speech.isAvailable) {
-    debugPrint("Speech service not available");
-    return;
-  }
+    if (!speech.isAvailable) {
+      debugPrint("Speech service not available");
+      return;
+    }
 
-  await speech.stop(); // กัน session ซ้อน
-  _sttBuffer = '';     // รีเซ็ต buffer
+    await speech.stop(); // กัน session ซ้อน
+    _sttBuffer = '';
 
-  bool available = await speech.initialize(
-    onStatus: (status) {
-      debugPrint("สถานะ: $status");
-
-      // ถ้าไมค์หยุดเอง แต่เรายังต้องการฟัง → restart
-      if ((status == "done" || status == "notListening") && isListening) {
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (isListening) _startListening();
-        });
-      }
-    },
-    onError: (error) {
-      debugPrint("ข้อผิดพลาด: $error");
-      //ถ้า error แล้วเรายังต้องการฟัง → restart
-      if (isListening) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (isListening) _startListening();
-        });
-      }
-    },
-  );
-
-  if (available) {
-    // ตรวจสอบ locale ภาษาไทย
     var systemLocales = await speech.locales();
+    debugPrint("Locales available: $systemLocales");
+
     final thLocale = systemLocales.firstWhere(
       (l) => l.localeId.startsWith("th"),
       orElse: () => systemLocales.first,
     );
 
+    // ถ้าไม่ใช่ th_TH ให้แจ้งผู้ใช้
     if (!thLocale.localeId.startsWith("th") && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("อุปกรณ์นี้ไม่รองรับเสียงภาษาไทย กำลังใช้ค่าเริ่มต้นแทน"),
+          content: Text("อุปกรณ์นี้ไม่รองรับการฟังเสียงภาษาไทย กำลังใช้ค่าเริ่มต้นแทน"),
         ),
       );
     }
 
     setState(() => isListening = true);
-
+    
     speech.listen(
       onResult: (result) {
         setState(() {
@@ -206,17 +148,14 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
       },
       localeId: thLocale.localeId,
       pauseFor: const Duration(seconds: 60),
-      listenFor: const Duration(minutes: 10),  // จะไม่หยุด เพราะครบเวลา
+      listenFor: const Duration(minutes: 10),
       listenOptions: stt.SpeechListenOptions(
         listenMode: stt.ListenMode.dictation,
         partialResults: true,
         cancelOnError: false,
       ),
     );
-  } else {
-    debugPrint("Speech recognition initialize failed");
   }
-}
 
   void _stopListening() async {
     await speech.stop();
