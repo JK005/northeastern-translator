@@ -7,6 +7,7 @@ import re
 from fuzzywuzzy import fuzz
 from pythainlp.tokenize import word_tokenize
 from services.nlp_service import tokenize_text, normalize_text, translate_isan_to_thai, translate_thai_to_isan
+from mysql.connector.pooling import MySQLConnectionPool
 
 app = FastAPI()
 app.add_middleware(
@@ -16,13 +17,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-db = mysql.connector.connect(
-    host="178.128.179.115",       # IP ของ Droplet
-    user="appdb",                 # user ที่คุณสร้างใน MySQL
-    password="strongpassword092", # รหัสที่คุณตั้งจริง
-    database="local_translator"   # ชื่อฐานข้อมูล
+pool = MySQLConnectionPool(
+    pool_name="mypool",
+    pool_size=10,
+    host="178.128.179.115",
+    user="appdb",
+    password="strongpassword092",
+    database="local_translator",
+    autocommit=True
 )
-cursor = db.cursor(buffered=True)
+
+def get_connection():
+    return pool.get_connection()
 
 # ===== ปรับคำว่า "บ่" =====
 def adjust_bor(isan_tokens, thai_tokens):
@@ -77,12 +83,18 @@ class SentenceRequest(BaseModel):
 
 @app.post("/add-word")
 def add_word(request: AddWordRequest):
-    cursor.execute(
-        "INSERT INTO isan_thai (isan_word, thai_translation) VALUES (%s, %s)",
-        (request.isan_word, request.thai_translation)
-    )
-    db.commit()
-    return {"message": "เพิ่มคำศัพท์สำเร็จ!"}
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO isan_thai (isan_word, thai_translation) VALUES (%s, %s)",
+            (request.isan_word, request.thai_translation)
+        )
+        conn.commit()
+        return {"message": "เพิ่มคำศัพท์สำเร็จ!"}
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.post("/tokenize")
 def tokenize(request: SentenceRequest):
@@ -116,12 +128,17 @@ def is_quantity_like(word: str) -> bool:
 
 # --------- ดู pos_tag จากฐานข้อมูล ถ้ามี -----------
 def lookup_pos_tag_isan(isan_word: str) -> str | None:
-    # ตรวจใน isan_thai ก่อน (ต้นฉบับเป็นอีสาน)
-    cursor.execute("SELECT pos_tag FROM isan_thai WHERE isan_word = %s LIMIT 1", (isan_word,))
-    row = cursor.fetchone()
-    if row and row[0]:
-        return row[0].strip().lower()
-    return None
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT pos_tag FROM isan_thai WHERE isan_word = %s LIMIT 1", (isan_word,))
+        row = cursor.fetchone()
+        if row and row[0]:
+            return row[0].strip().lower()
+        return None
+    finally:
+        cursor.close()
+        conn.close()
 
 # --------- ปรับคำว่า "แต่" -> "แค่" เมื่ออยู่หน้า N/จำนวน ----------
 def adjust_tae(isan_tokens: list[str], thai_tokens: list[str]) -> list[str]:
@@ -178,134 +195,150 @@ def adjust_tae_position(isan_tokens: list[str], thai_tokens: list[str]) -> list[
 @app.post("/translate/isan-to-thai")
 def translate_isan(request: SentenceRequest):
     sentence = request.sentence.strip()
-
     sentence = sentence.encode("utf-8").decode("utf-8")
 
-    # 1) ลองทั้งประโยค
-    cursor.execute("SELECT thai_translation FROM isan_thai WHERE isan_word = %s", (sentence,))
-    result = cursor.fetchone()
-    if result:
-        isan_tokens = [sentence]
-        thai_tokens = [result[0]]
+    # ใช้ connection pool
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        # 1) ลองทั้งประโยค
+        cursor.execute("SELECT thai_translation FROM isan_thai WHERE isan_word = %s", (sentence,))
+        result = cursor.fetchone()
+        if result:
+            isan_tokens = [sentence]
+            thai_tokens = [result[0]]
+            # ปรับกฎ "บ่"
+            thai_tokens = adjust_bor(isan_tokens, thai_tokens)
+            # ปรับกฎ "แต่" -> "แค่" เมื่อหน้าคำนาม/จำนวน
+            thai_tokens = adjust_tae(isan_tokens, thai_tokens)
+            # ปรับกฎ "แต่" -> "จาก" เมื่อหน้าคำที่เกี่ยวกับตำแหน่ง
+            thai_tokens = adjust_tae_position(isan_tokens, thai_tokens)
+            thai_combined = "".join(thai_tokens)
+            return {
+                "translated_text": {
+                    "input": sentence,
+                    "output": {"isan": isan_tokens, "thai": [thai_combined]}
+                }
+            }
+
+        # 2) Greedy + tokenize
+        words = word_tokenize(sentence, engine="newmm")
+        n = len(words)
+        translated_pairs = []
+        i = 0
+
+        while i < n:
+            found = False
+            for size in range(4, 0, -1):
+                if i + size <= n:
+                    combined_word = ''.join(words[i:i+size])
+                    cursor.execute(
+                        "SELECT thai_translation FROM isan_thai WHERE isan_word = %s",
+                        (combined_word,)
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        translated_pairs.append((combined_word, row[0]))
+                        i += size
+                        found = True
+                        break
+            if not found:
+                translated_pairs.append((words[i], words[i]))
+                i += 1
+
+        isan_tokens = [p[0] for p in translated_pairs]
+        thai_tokens = [p[1] for p in translated_pairs]
+
         # ปรับกฎ "บ่"
         thai_tokens = adjust_bor(isan_tokens, thai_tokens)
-        # ปรับกฎ "แต่" -> "แค่" เมื่อหน้าคำนาม/จำนวน
+        # ปรับกฎ "แต่" -> "แค่" เมื่อหน้า N/จำนวน
         thai_tokens = adjust_tae(isan_tokens, thai_tokens)
         # ปรับกฎ "แต่" -> "จาก" เมื่อหน้าคำที่เกี่ยวกับตำแหน่ง
         thai_tokens = adjust_tae_position(isan_tokens, thai_tokens)
-        thai_combined = "".join(thai_tokens)
+
+        thai_combined = ''.join(thai_tokens)
         return {
             "translated_text": {
                 "input": sentence,
                 "output": {"isan": isan_tokens, "thai": [thai_combined]}
             }
         }
-
-    # 2) Greedy + tokenize
-    words = word_tokenize(sentence, engine="newmm")
-    n = len(words)
-    translated_pairs = []
-    i = 0
-
-    while i < n:
-        found = False
-        for size in range(4, 0, -1):
-            if i + size <= n:
-                combined_word = ''.join(words[i:i+size])
-                cursor.execute(
-                    "SELECT thai_translation FROM isan_thai WHERE isan_word = %s",
-                    (combined_word,)
-                )
-                row = cursor.fetchone()
-                if row:
-                    translated_pairs.append((combined_word, row[0]))
-                    i += size
-                    found = True
-                    break
-        if not found:
-            translated_pairs.append((words[i], words[i]))
-            i += 1
-
-    isan_tokens = [p[0] for p in translated_pairs]
-    thai_tokens = [p[1] for p in translated_pairs]
-
-    # ปรับกฎ "บ่"
-    thai_tokens = adjust_bor(isan_tokens, thai_tokens)
-    # ปรับกฎ "แต่" -> "แค่" เมื่อหน้า N/จำนวน
-    thai_tokens = adjust_tae(isan_tokens, thai_tokens)
-    # ปรับกฎ "แต่" -> "จาก" เมื่อหน้าคำที่เกี่ยวกับตำแหน่ง
-    thai_tokens = adjust_tae_position(isan_tokens, thai_tokens)
-
-    thai_combined = ''.join(thai_tokens)
-    return {
-        "translated_text": {
-            "input": sentence,
-            "output": {"isan": isan_tokens, "thai": [thai_combined]}
-        }
-    }
-
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.post("/translate/thai-to-isan")
 def translate_thai(request: SentenceRequest):
     sentence = request.sentence.strip()
-
     sentence = sentence.encode("utf-8").decode("utf-8")
 
-    # 1) ลองทั้งประโยคก่อน
-    cursor.execute("SELECT isan_translation FROM thai_isan WHERE thai_word = %s", (sentence,))
-    result = cursor.fetchone()
-    if result:
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        # 1) ลองทั้งประโยคก่อน
+        cursor.execute("SELECT isan_translation FROM thai_isan WHERE thai_word = %s", (sentence,))
+        result = cursor.fetchone()
+        if result:
+            return {
+                "translated_text": {
+                    "input": sentence,
+                    "output": {"thai": [sentence], "isan": [result[0]]}
+                }
+            }
+
+        # 2) Greedy + tokenize (แก้ไขการแยกคำอย่างละเอียด)
+        words = word_tokenize(sentence, engine="newmm")
+        n = len(words)
+        translated_pairs = []
+        i = 0
+
+        while i < n:
+            found = False
+            for size in range(4, 0, -1):  # ลองรวม 4 -> 1 คำ
+                if i + size <= n:
+                    combined_word = ''.join(words[i:i+size])
+                    cursor.execute(
+                        "SELECT isan_translation FROM thai_isan WHERE thai_word = %s",
+                        (combined_word,)
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        translated_pairs.append((combined_word, row[0]))
+                        i += size
+                        found = True
+                        break
+            if not found:
+                # ไม่เจอใน DB -> คืนคำเดิม
+                translated_pairs.append((words[i], words[i]))
+                i += 1
+
+        thai_tokens = [p[0] for p in translated_pairs]
+        isan_tokens = [p[1] for p in translated_pairs]
+
+        # 3) ปรับการแปลคำว่า "ไม่เป็นอะไร"
+        thai_combined = "".join(thai_tokens)
+        isan_combined = "".join(isan_tokens)
+
+        # 4) ส่งผลลัพธ์
         return {
             "translated_text": {
                 "input": sentence,
-                "output": {"thai": [sentence], "isan": [result[0]]}
+                "output": {"thai": thai_tokens, "isan": [isan_combined]}
             }
         }
-
-    # 2) Greedy + tokenize (แก้ไขการแยกคำอย่างละเอียด)
-    words = word_tokenize(sentence, engine="newmm")
-    n = len(words)
-    translated_pairs = []
-    i = 0
-
-    while i < n:
-        found = False
-        for size in range(4, 0, -1):  # ลองรวม 4 -> 1 คำ
-            if i + size <= n:
-                combined_word = ''.join(words[i:i+size])
-                cursor.execute(
-                    "SELECT isan_translation FROM thai_isan WHERE thai_word = %s",
-                    (combined_word,)
-                )
-                row = cursor.fetchone()
-                if row:
-                    translated_pairs.append((combined_word, row[0]))
-                    i += size
-                    found = True
-                    break
-        if not found:
-            # ไม่เจอใน DB -> คืนคำเดิม
-            translated_pairs.append((words[i], words[i]))
-            i += 1
-
-    thai_tokens = [p[0] for p in translated_pairs]
-    isan_tokens = [p[1] for p in translated_pairs]
-
-    # 3) ปรับการแปลคำว่า "ไม่เป็นอะไร"
-    thai_combined = "".join(thai_tokens)
-    isan_combined = "".join(isan_tokens)
-
-    # 4) ส่งผลลัพธ์
-    return {
-        "translated_text": {
-            "input": sentence,
-            "output": {"thai": thai_tokens, "isan": [isan_combined]}
-        }
-    }
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.get("/test-db")
 def test_db():
-    cursor.execute("SELECT isan_word, thai_translation FROM isan_thai LIMIT 30")
-    rows = cursor.fetchall()
-    data = [{"isan_word": r[0], "thai_translation": r[1]} for r in rows]
-    return {"data": data}
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT isan_word, thai_translation FROM isan_thai LIMIT 30")
+        rows = cursor.fetchall()
+        data = [{"isan_word": r[0], "thai_translation": r[1]} for r in rows]
+        return {"data": data}
+    finally:
+        cursor.close()
+        conn.close()
