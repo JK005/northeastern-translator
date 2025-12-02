@@ -84,7 +84,7 @@ class SentenceRequest(BaseModel):
 @app.post("/add-word")
 def add_word(request: AddWordRequest):
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(buffered=True)
     try:
         cursor.execute(
             "INSERT INTO isan_thai (isan_word, thai_translation) VALUES (%s, %s)",
@@ -129,7 +129,7 @@ def is_quantity_like(word: str) -> bool:
 # --------- ดู pos_tag จากฐานข้อมูล ถ้ามี -----------
 def lookup_pos_tag_isan(isan_word: str) -> str | None:
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(buffered=True)
     try:
         cursor.execute("SELECT pos_tag FROM isan_thai WHERE isan_word = %s LIMIT 1", (isan_word,))
         row = cursor.fetchone()
@@ -199,7 +199,7 @@ def translate_isan(request: SentenceRequest):
 
     # ใช้ connection pool
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(buffered=True)
     try:
         # 1) ลองทั้งประโยค
         cursor.execute("SELECT thai_translation FROM isan_thai WHERE isan_word = %s", (sentence,))
@@ -273,7 +273,7 @@ def translate_thai(request: SentenceRequest):
     sentence = sentence.encode("utf-8").decode("utf-8")
 
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(buffered=True)
     try:
         # 1) ลองทั้งประโยคก่อน
         cursor.execute("SELECT isan_translation FROM thai_isan WHERE thai_word = %s", (sentence,))
@@ -333,7 +333,7 @@ def translate_thai(request: SentenceRequest):
 @app.get("/test-db")
 def test_db():
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(buffered=True)
     try:
         cursor.execute("SELECT isan_word, thai_translation FROM isan_thai LIMIT 30")
         rows = cursor.fetchall()
