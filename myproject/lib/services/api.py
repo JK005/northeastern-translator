@@ -197,29 +197,50 @@ def translate_isan(request: SentenceRequest):
     sentence = request.sentence.strip()
     sentence = sentence.encode("utf-8").decode("utf-8")
 
-    # ใช้ connection pool
+    # เงื่อนไขพิเศษสำหรับคำว่า "โต"
+    if sentence == "โต":
+        return {
+            "translated_text": {
+                "input": sentence,
+                "output": {
+                    "isan": ["โต"],
+                    "thai_options": ["ตัว", "คุณ"]
+                }
+            }
+        }
+
     conn = get_connection()
     cursor = conn.cursor(buffered=True)
     try:
         # 1) ลองทั้งประโยค
         cursor.execute("SELECT thai_translation FROM isan_thai WHERE isan_word = %s", (sentence,))
-        result = cursor.fetchone()
-        if result:
+        rows = cursor.fetchall()
+        if rows:
             isan_tokens = [sentence]
-            thai_tokens = [result[0]]
-            # ปรับกฎ "บ่"
-            thai_tokens = adjust_bor(isan_tokens, thai_tokens)
-            # ปรับกฎ "แต่" -> "แค่" เมื่อหน้าคำนาม/จำนวน
-            thai_tokens = adjust_tae(isan_tokens, thai_tokens)
-            # ปรับกฎ "แต่" -> "จาก" เมื่อหน้าคำที่เกี่ยวกับตำแหน่ง
-            thai_tokens = adjust_tae_position(isan_tokens, thai_tokens)
-            thai_combined = "".join(thai_tokens)
-            return {
-                "translated_text": {
-                    "input": sentence,
-                    "output": {"isan": isan_tokens, "thai": [thai_combined]}
+            thai_options = [r[0] for r in rows]
+
+            if len(thai_options) > 1:
+                return {
+                    "translated_text": {
+                        "input": sentence,
+                        "output": {
+                            "isan": isan_tokens,
+                            "thai_options": thai_options
+                        }
+                    }
                 }
-            }
+            else:
+                thai_tokens = [thai_options[0]]
+                thai_tokens = adjust_bor(isan_tokens, thai_tokens)
+                thai_tokens = adjust_tae(isan_tokens, thai_tokens)
+                thai_tokens = adjust_tae_position(isan_tokens, thai_tokens)
+                thai_combined = "".join(thai_tokens)
+                return {
+                    "translated_text": {
+                        "input": sentence,
+                        "output": {"isan": isan_tokens, "thai": [thai_combined]}
+                    }
+                }
 
         # 2) Greedy + tokenize
         words = word_tokenize(sentence, engine="newmm")
@@ -249,9 +270,7 @@ def translate_isan(request: SentenceRequest):
         isan_tokens = [p[0] for p in translated_pairs]
         thai_tokens = [p[1] for p in translated_pairs]
 
-        # ปรับกฎ "บ่"
         thai_tokens = adjust_bor(isan_tokens, thai_tokens)
-        # ปรับกฎ "แต่" -> "แค่" เมื่อหน้า N/จำนวน
         thai_tokens = adjust_tae(isan_tokens, thai_tokens)
         thai_tokens = adjust_tae_position(isan_tokens, thai_tokens)
 
@@ -271,21 +290,48 @@ def translate_thai(request: SentenceRequest):
     sentence = request.sentence.strip()
     sentence = sentence.encode("utf-8").decode("utf-8")
 
+    # เงื่อนไขพิเศษสำหรับคำว่า "ตัว"
+    if sentence == "ตัว":
+        return {
+            "translated_text": {
+                "input": sentence,
+                "output": {
+                    "thai": [sentence],
+                    "isan_options": ["โต"]  # ส่งเป็น options เพื่อให้ UI เลือกได้
+                }
+            }
+        }
+
     conn = get_connection()
     cursor = conn.cursor(buffered=True)
     try:
-        # 1) ลองทั้งประโยคก่อน
+        # 1) ลองทั้งประโยค
         cursor.execute("SELECT isan_translation FROM thai_isan WHERE thai_word = %s", (sentence,))
-        result = cursor.fetchone()
-        if result:
-            return {
-                "translated_text": {
-                    "input": sentence,
-                    "output": {"thai": [sentence], "isan": [result[0]]}
+        rows = cursor.fetchall()
+        if rows:
+            options = [r[0] for r in rows]
+            if len(options) > 1:
+                return {
+                    "translated_text": {
+                        "input": sentence,
+                        "output": {
+                            "thai": [sentence],
+                            "isan_options": options
+                        }
+                    }
                 }
-            }
+            else:
+                return {
+                    "translated_text": {
+                        "input": sentence,
+                        "output": {
+                            "thai": [sentence],
+                            "isan": [options[0]]
+                        }
+                    }
+                }
 
-        # 2) Greedy + tokenize (แก้ไขการแยกคำอย่างละเอียด)
+        # 2) Greedy + tokenize
         words = word_tokenize(sentence, engine="newmm")
         n = len(words)
         translated_pairs = []
@@ -293,7 +339,7 @@ def translate_thai(request: SentenceRequest):
 
         while i < n:
             found = False
-            for size in range(4, 0, -1):  # ลองรวม 4 -> 1 คำ
+            for size in range(4, 0, -1):
                 if i + size <= n:
                     combined_word = ''.join(words[i:i+size])
                     cursor.execute(
@@ -307,18 +353,15 @@ def translate_thai(request: SentenceRequest):
                         found = True
                         break
             if not found:
-                # ไม่เจอใน DB -> คืนคำเดิม
                 translated_pairs.append((words[i], words[i]))
                 i += 1
 
         thai_tokens = [p[0] for p in translated_pairs]
         isan_tokens = [p[1] for p in translated_pairs]
 
-        # 3) ปรับการแปลคำว่า "ไม่เป็นอะไร"
         thai_combined = "".join(thai_tokens)
         isan_combined = "".join(isan_tokens)
 
-        # 4) ส่งผลลัพธ์
         return {
             "translated_text": {
                 "input": sentence,

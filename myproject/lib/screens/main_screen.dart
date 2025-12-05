@@ -54,6 +54,7 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
   final TextEditingController outputController = TextEditingController();
   final FlutterTts tts = FlutterTts();
   final stt.SpeechToText speech = stt.SpeechToText();
+  
 
   bool isThaiToIsan = true;
   double ttsSpeed = 0.5;
@@ -66,6 +67,8 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
   String _sttBuffer = '';
   // ignore: unused_field
   final String _lastFinal = '';
+  List<String> _options = [];               // ตัวเลือกหลายความหมาย
+  String? _selectedTranslation;             // คำแปลที่เลือกจาก Dropdown
 
   @override
   void initState() {
@@ -205,8 +208,8 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
   Future<void> _translateText() async {
   try {
     // เรียกผ่าน Service ตามทิศทางการแปล
-    final translated = isThaiToIsan
-        ? await ApiService.translateThaiToIsan(inputController.text) 
+    final result = isThaiToIsan
+        ? await ApiService.translateThaiToIsan(inputController.text)
         : await ApiService.translateIsanToThai(inputController.text);
 
     // โหลด favorites จาก SharedPreferences
@@ -215,8 +218,14 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
 
     if (!mounted) return;
     setState(() {
-      outputController.text = translated;
-      isFavorite = favs.contains('${inputController.text}|$translated');
+      _options = result.options;
+      _selectedTranslation = result.translation;
+
+      // ใช้ค่าที่เลือกจาก Dropdown เป็นผลลัพธ์
+      outputController.text = _selectedTranslation ?? "";
+
+      // ตรวจสอบ favorites โดยใช้ translation ที่เลือก
+      isFavorite = favs.contains('${inputController.text}|${result.translation}');
     });
   } on TimeoutException {
     if (!mounted) return;
@@ -478,21 +487,19 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
   );
 }
 
-  @override
+    @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    //final screenHeight = MediaQuery.of(context).size.height;
     return OrientationBuilder(
       builder: (context, orientation) {
         return Scaffold(
           appBar: AppBar(
             title: const Text("แปลภาษาไทย-อีสาน"),
             leading: Builder(
-              builder:
-                  (context) => IconButton(
-                    icon: const Icon(Icons.menu),
-                    onPressed: () => Scaffold.of(context).openDrawer(),
-                  ),
+              builder: (context) => IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              ),
             ),
           ),
           drawer: _buildDrawer(),
@@ -503,6 +510,8 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
                 children: [
                   _buildLanguageSwitcher(screenWidth),
                   SizedBox(height: 16.h),
+
+                  // 🔹 TextBox ป้อนข้อความ
                   if (orientation == Orientation.portrait) ...[
                     _buildTextBox(
                       label: "ป้อนข้อความ",
@@ -510,11 +519,6 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
                       readOnly: false,
                     ),
                     SizedBox(height: 16.h),
-                    _buildTextBox(
-                      label: "คำแปล",
-                      controller: outputController,
-                      readOnly: true,
-                    ),
                   ] else ...[
                     Row(
                       children: [
@@ -536,7 +540,10 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
                       ],
                     ),
                   ],
+
                   SizedBox(height: 24.h),
+
+                  // 🔹 ปุ่มแปล + ปุ่มไมค์
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -563,12 +570,12 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
                         transitionBuilder: (child, animation) =>
                             ScaleTransition(scale: animation, child: child),
                         child: ElevatedButton(
-                          key: ValueKey(isListening), // สำคัญสำหรับ AnimatedSwitcher
+                          key: ValueKey(isListening),
                           onPressed: isListening ? _stopListening : _startListening,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: isListening ? Colors.red[400] : Colors.green[400],
                             shape: const CircleBorder(),
-                            padding: EdgeInsets.all(19.r), //ขนาดปุ่มไมล์
+                            padding: EdgeInsets.all(19.r),
                             elevation: 6,
                           ),
                           child: Icon(
@@ -580,6 +587,37 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
                       )
                     ],
                   ),
+
+                  SizedBox(height: 16.h),
+
+                  // Dropdown สำหรับเลือกหลายความหมาย
+                  // isNotEmpty คำสั่งทดสอบว่า API ส่ง OPtion มาหรือไม่?
+                  if (_options.length > 1)
+                    DropdownButton<String>(
+                      value: _selectedTranslation,
+                      items: _options.map((opt) {
+                        return DropdownMenuItem(
+                          value: opt,
+                          child: Text(opt),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedTranslation = val;
+                          outputController.text = val ?? "";
+                        });
+                      },
+                    ),
+
+                  SizedBox(height: 16.h),
+
+                  // 🔹 TextBox แสดงผลลัพธ์ (ถ้าเป็น portrait)
+                  if (orientation == Orientation.portrait)
+                    _buildTextBox(
+                      label: "คำแปล",
+                      controller: outputController,
+                      readOnly: true,
+                    ),
                 ],
               ),
             ),
