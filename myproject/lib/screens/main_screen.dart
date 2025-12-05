@@ -204,7 +204,8 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
           }).toList();
     });
   }
-
+  
+  //เปลี่ยน
   Future<void> _translateText() async {
   try {
     // เรียกผ่าน Service ตามทิศทางการแปล
@@ -240,7 +241,7 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
       isFavorite = false;
     });
   }
-}
+}//เปลี่ยนแค่ตรงนี้
 
   Future<void> _toggleFavorite(String input, String output) async {
     final prefs = await SharedPreferences.getInstance();
@@ -609,7 +610,7 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
                       },
                     ),
 
-                  SizedBox(height: 16.h),
+                  SizedBox(height: 16.h),//เปลี่ยนแค่ตรงนี้
 
                   // 🔹 TextBox แสดงผลลัพธ์ (ถ้าเป็น portrait)
                   if (orientation == Orientation.portrait)

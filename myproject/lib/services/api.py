@@ -191,7 +191,7 @@ def adjust_tae_position(isan_tokens: list[str], thai_tokens: list[str]) -> list[
         i += 1
     return thai_tokens
 
-
+#เปลี่ยน
 @app.post("/translate/isan-to-thai")
 def translate_isan(request: SentenceRequest):
     sentence = request.sentence.strip()
@@ -285,6 +285,7 @@ def translate_isan(request: SentenceRequest):
         cursor.close()
         conn.close()
 
+#เปลี่ยน
 @app.post("/translate/thai-to-isan")
 def translate_thai(request: SentenceRequest):
     sentence = request.sentence.strip()
