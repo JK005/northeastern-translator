@@ -253,7 +253,6 @@ def translate_isan(request: SentenceRequest):
         thai_tokens = adjust_bor(isan_tokens, thai_tokens)
         # ปรับกฎ "แต่" -> "แค่" เมื่อหน้า N/จำนวน
         thai_tokens = adjust_tae(isan_tokens, thai_tokens)
-        # ปรับกฎ "แต่" -> "จาก" เมื่อหน้าคำที่เกี่ยวกับตำแหน่ง
         thai_tokens = adjust_tae_position(isan_tokens, thai_tokens)
 
         thai_combined = ''.join(thai_tokens)
