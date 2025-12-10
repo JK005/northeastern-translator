@@ -15,11 +15,11 @@ import '../favorite_page.dart'; //หน้า Favorite คำที่ชื่
 import 'dart:ui'; // สำหรับ BackdropFilter
 
 void main() {
-  runApp(const MyApp());
+  runApp(const MainScreen());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class MainScreen extends StatelessWidget {
+  const MainScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +55,6 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
   final FlutterTts tts = FlutterTts();
   final stt.SpeechToText speech = stt.SpeechToText();
   
-
   bool isThaiToIsan = true;
   double ttsSpeed = 0.5;
   bool isListening = false;
@@ -67,8 +66,8 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
   String _sttBuffer = '';
   // ignore: unused_field
   final String _lastFinal = '';
-  List<String> _options = [];               // ตัวเลือกหลายความหมาย
-  String? _selectedTranslation;             // คำแปลที่เลือกจาก Dropdown
+  List<Token> _tokens = [];
+  String? _selectedTranslation;
 
   @override
   void initState() {
@@ -219,14 +218,10 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
 
     if (!mounted) return;
     setState(() {
-      _options = result.options;
-      _selectedTranslation = result.translation;
-
-      // ใช้ค่าที่เลือกจาก Dropdown เป็นผลลัพธ์
+      _tokens = result.tokens; // เก็บ tokens ที่ได้จาก API
+      _selectedTranslation = result.combinedTranslation;
       outputController.text = _selectedTranslation ?? "";
-
-      // ตรวจสอบ favorites โดยใช้ translation ที่เลือก
-      isFavorite = favs.contains('${inputController.text}|${result.translation}');
+      isFavorite = favs.contains('${inputController.text}|${_selectedTranslation}');
     });
   } on TimeoutException {
     if (!mounted) return;
@@ -241,7 +236,7 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
       isFavorite = false;
     });
   }
-}//เปลี่ยนแค่ตรงนี้
+}
 
   Future<void> _toggleFavorite(String input, String output) async {
     final prefs = await SharedPreferences.getInstance();
@@ -488,7 +483,7 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
   );
 }
 
-    @override
+  @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     return OrientationBuilder(
@@ -544,7 +539,7 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
 
                   SizedBox(height: 24.h),
 
-                  // 🔹 ปุ่มแปล + ปุ่มไมค์
+                  // ปุ่มแปล + ปุ่มไมค์
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -588,31 +583,41 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
                       )
                     ],
                   ),
-
                   SizedBox(height: 16.h),
 
                   // Dropdown สำหรับเลือกหลายความหมาย
-                  // isNotEmpty คำสั่งทดสอบว่า API ส่ง OPtion มาหรือไม่?
-                  if (_options.length > 1)
-                    DropdownButton<String>(
-                      value: _selectedTranslation,
-                      items: _options.map((opt) {
-                        return DropdownMenuItem(
-                          value: opt,
-                          child: Text(opt),
-                        );
+                  if (_tokens.isNotEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _tokens.map((t) {
+                        if (t.options.length > 1) {
+                          return DropdownButton<String>(
+                            value: t.selected,
+                            items: t.options.map((opt) {
+                              return DropdownMenuItem(
+                                value: opt,
+                                child: Text(opt),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              setState(() {
+                                t.selected = val!;
+                                // รวมผลลัพธ์ใหม่ทุกครั้งที่เลือก
+                                _selectedTranslation = _tokens.map((x) => x.selected).join("");
+                                outputController.text = _selectedTranslation ?? "";
+                              });
+                            },
+                          );
+                        } else {
+                          // ถ้ามีความหมายเดียว แสดงเป็นข้อความธรรมดา
+                          return Chip(label: Text(t.options.first));
+                        }
                       }).toList(),
-                      onChanged: (val) {
-                        setState(() {
-                          _selectedTranslation = val;
-                          outputController.text = val ?? "";
-                        });
-                      },
                     ),
+                  SizedBox(height: 16.h),
 
-                  SizedBox(height: 16.h),//เปลี่ยนแค่ตรงนี้
-
-                  // 🔹 TextBox แสดงผลลัพธ์ (ถ้าเป็น portrait)
+                  // TextBox แสดงผลลัพธ์ (ถ้าเป็น portrait)
                   if (orientation == Orientation.portrait)
                     _buildTextBox(
                       label: "คำแปล",

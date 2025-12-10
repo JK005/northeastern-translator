@@ -1,47 +1,58 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
+/// Model สำหรับแต่ละ Token (คำ + options)
+class Token {
+  final String word;
+  final List<String> options;
+  String selected; // ค่า default ที่เลือก (option แรก)
+
+  Token({
+    required this.word,
+    required this.options,
+    required this.selected,
+  });
+
+  factory Token.fromJson(Map<String, dynamic> json) {
+    List<String> opts = List<String>.from(json['options']);
+    return Token(
+      word: json['word'],
+      options: opts,
+      selected: opts.isNotEmpty ? opts.first : json['word'],
+    );
+  }
+}
+
+/// Model สำหรับผลลัพธ์การแปล
 class TranslationResult {
   final String input;
-  final String translation;       // คำแปลหลัก (ถ้ามีแค่หนึ่ง)
-  final List<String> options;     // ตัวเลือกหลายความหมาย
+  final List<Token> tokens;
 
   TranslationResult({
     required this.input,
-    required this.translation,
-    required this.options,
+    required this.tokens,
   });
 
-  factory TranslationResult.fromJson(Map<String, dynamic> json, {bool isanToThai = true}) {
-    final output = json["translated_text"]["output"];
+  factory TranslationResult.fromJson(Map<String, dynamic> json) {
     final input = json["translated_text"]["input"];
+    final output = json["translated_text"]["output"];
 
-    List<String> options = [];
-    String translation = "";
-
-    if (isanToThai) {
-      if (output["thai_options"] != null) {
-        options = List<String>.from(output["thai_options"]);
-        translation = options.first;
-      } else {
-        options = List<String>.from(output["thai"]);
-        translation = options.first;
-      }
-    } else {
-      if (output["isan_options"] != null) {
-        options = List<String>.from(output["isan_options"]);
-        translation = options.first;
-      } else {
-        options = List<String>.from(output["isan"]);
-        translation = options.first;
-      }
+    List<Token> tokens = [];
+    if (output["tokens"] != null) {
+      tokens = (output["tokens"] as List)
+          .map((t) => Token.fromJson(t))
+          .toList();
     }
 
     return TranslationResult(
       input: input,
-      translation: translation,
-      options: options,
+      tokens: tokens,
     );
+  }
+
+  /// รวมผลลัพธ์ที่เลือกทั้งหมดกลับเป็นประโยคเดียว
+  String get combinedTranslation {
+    return tokens.map((t) => t.selected).join("");
   }
 }
 
@@ -62,13 +73,13 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        return TranslationResult.fromJson(data, isanToThai: true);
+        return TranslationResult.fromJson(data);
       } else {
         throw Exception("ไม่สามารถแปลได้: ${response.statusCode}");
       }
     } catch (e) {
       print("เกิดข้อผิดพลาดในการเชื่อมต่อ API: $e");
-      return TranslationResult(input: inputText, translation: "แปลไม่สำเร็จ", options: []);
+      return TranslationResult(input: inputText, tokens: []);
     }
   }
 
@@ -84,13 +95,13 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        return TranslationResult.fromJson(data, isanToThai: false);
+        return TranslationResult.fromJson(data);
       } else {
         throw Exception("ไม่สามารถแปลได้: ${response.statusCode}");
       }
     } catch (e) {
       print("เกิดข้อผิดพลาดในการเชื่อมต่อ API: $e");
-      return TranslationResult(input: inputText, translation: "แปลไม่สำเร็จ", options: []);
+      return TranslationResult(input: inputText, tokens: []);
     }
   }
 }

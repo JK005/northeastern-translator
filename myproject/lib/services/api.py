@@ -81,21 +81,6 @@ class AddWordRequest(BaseModel):
 class SentenceRequest(BaseModel):
     sentence: str
 
-@app.post("/add-word")
-def add_word(request: AddWordRequest):
-    conn = get_connection()
-    cursor = conn.cursor(buffered=True)
-    try:
-        cursor.execute(
-            "INSERT INTO isan_thai (isan_word, thai_translation) VALUES (%s, %s)",
-            (request.isan_word, request.thai_translation)
-        )
-        conn.commit()
-        return {"message": "เพิ่มคำศัพท์สำเร็จ!"}
-    finally:
-        cursor.close()
-        conn.close()
-
 @app.post("/tokenize")
 def tokenize(request: SentenceRequest):
     return {"tokens": tokenize_text(request.sentence)}
@@ -191,65 +176,48 @@ def adjust_tae_position(isan_tokens: list[str], thai_tokens: list[str]) -> list[
         i += 1
     return thai_tokens
 
-#เปลี่ยน
 @app.post("/translate/isan-to-thai")
 def translate_isan(request: SentenceRequest):
     sentence = request.sentence.strip()
     sentence = sentence.encode("utf-8").decode("utf-8")
 
-    # เงื่อนไขพิเศษสำหรับคำว่า "โต"
-    if sentence == "โต":
-        return {
-            "translated_text": {
-                "input": sentence,
-                "output": {
-                    "isan": ["โต"],
-                    "thai_options": ["ตัว", "คุณ"]
-                }
-            }
-        }
-
     conn = get_connection()
     cursor = conn.cursor(buffered=True)
     try:
-        # 1) ลองทั้งประโยค
         cursor.execute("SELECT thai_translation FROM isan_thai WHERE isan_word = %s", (sentence,))
         rows = cursor.fetchall()
         if rows:
-            isan_tokens = [sentence]
-            thai_options = [r[0] for r in rows]
-
-            if len(thai_options) > 1:
-                return {
-                    "translated_text": {
-                        "input": sentence,
-                        "output": {
-                            "isan": isan_tokens,
-                            "thai_options": thai_options
-                        }
+            options = [r[0] for r in rows]
+            return {
+                "translated_text": {
+                    "input": sentence,
+                    "output": {
+                        "tokens": [
+                            {"word": sentence, "options": options}
+                        ]
                     }
                 }
-            else:
-                thai_tokens = [thai_options[0]]
-                thai_tokens = adjust_bor(isan_tokens, thai_tokens)
-                thai_tokens = adjust_tae(isan_tokens, thai_tokens)
-                thai_tokens = adjust_tae_position(isan_tokens, thai_tokens)
-                thai_combined = "".join(thai_tokens)
-                return {
-                    "translated_text": {
-                        "input": sentence,
-                        "output": {"isan": isan_tokens, "thai": [thai_combined]}
-                    }
-                }
+            }
 
         # 2) Greedy + tokenize
         words = word_tokenize(sentence, engine="newmm")
         n = len(words)
-        translated_pairs = []
+        tokens_result = []
         i = 0
 
         while i < n:
             found = False
+            if words[i] == "สี":
+                cursor.execute("SELECT thai_translation FROM isan_thai WHERE isan_word = %s", ("สี",))
+                rows = cursor.fetchall()
+                if rows:
+                    options = [r[0] for r in rows]
+                    tokens_result.append({"word": "สี", "options": options})
+                else:
+                    tokens_result.append({"word": "สี", "options": ["สี"]})
+                i += 1
+                continue
+            
             for size in range(4, 0, -1):
                 if i + size <= n:
                     combined_word = ''.join(words[i:i+size])
@@ -257,89 +225,83 @@ def translate_isan(request: SentenceRequest):
                         "SELECT thai_translation FROM isan_thai WHERE isan_word = %s",
                         (combined_word,)
                     )
-                    row = cursor.fetchone()
-                    if row:
-                        translated_pairs.append((combined_word, row[0]))
+                    rows = cursor.fetchall()
+                    if rows:
+                        options = [r[0] for r in rows]
+                        tokens_result.append({"word": combined_word, "options": options})
                         i += size
                         found = True
                         break
             if not found:
-                translated_pairs.append((words[i], words[i]))
+                tokens_result.append({"word": words[i], "options": [words[i]]})
                 i += 1
 
-        isan_tokens = [p[0] for p in translated_pairs]
-        thai_tokens = [p[1] for p in translated_pairs]
-
+        # ปรับแต่ง tokens ด้วยฟังก์ชันเดิม
+        isan_tokens = [t["word"] for t in tokens_result]
+        thai_tokens = [t["options"][0] for t in tokens_result]  # ใช้ option แรกเป็นค่า default
         thai_tokens = adjust_bor(isan_tokens, thai_tokens)
         thai_tokens = adjust_tae(isan_tokens, thai_tokens)
         thai_tokens = adjust_tae_position(isan_tokens, thai_tokens)
 
-        thai_combined = ''.join(thai_tokens)
+        # อัปเดตค่า default ใน tokens_result หลังปรับแต่ง
+        for idx, t in enumerate(tokens_result):
+            if t["options"]:
+                t["options"][0] = thai_tokens[idx]
+
         return {
             "translated_text": {
                 "input": sentence,
-                "output": {"isan": isan_tokens, "thai": [thai_combined]}
+                "output": {
+                    "tokens": tokens_result
+                }
             }
         }
     finally:
         cursor.close()
         conn.close()
 
-#เปลี่ยน
 @app.post("/translate/thai-to-isan")
 def translate_thai(request: SentenceRequest):
     sentence = request.sentence.strip()
     sentence = sentence.encode("utf-8").decode("utf-8")
 
-    # เงื่อนไขพิเศษสำหรับคำว่า "ตัว"
-    if sentence == "ตัว":
-        return {
-            "translated_text": {
-                "input": sentence,
-                "output": {
-                    "thai": [sentence],
-                    "isan_options": ["โต"]  # ส่งเป็น options เพื่อให้ UI เลือกได้
-                }
-            }
-        }
-
     conn = get_connection()
     cursor = conn.cursor(buffered=True)
     try:
-        # 1) ลองทั้งประโยค
         cursor.execute("SELECT isan_translation FROM thai_isan WHERE thai_word = %s", (sentence,))
         rows = cursor.fetchall()
         if rows:
             options = [r[0] for r in rows]
-            if len(options) > 1:
-                return {
-                    "translated_text": {
-                        "input": sentence,
-                        "output": {
-                            "thai": [sentence],
-                            "isan_options": options
-                        }
+            return {
+                "translated_text": {
+                    "input": sentence,
+                    "output": {
+                        "tokens": [
+                            {"word": sentence, "options": options}
+                        ]
                     }
                 }
-            else:
-                return {
-                    "translated_text": {
-                        "input": sentence,
-                        "output": {
-                            "thai": [sentence],
-                            "isan": [options[0]]
-                        }
-                    }
-                }
+            }
 
         # 2) Greedy + tokenize
         words = word_tokenize(sentence, engine="newmm")
         n = len(words)
-        translated_pairs = []
+        tokens_result = []
         i = 0
 
         while i < n:
             found = False
+            if words[i] == "สี":
+                cursor.execute("SELECT isan_translation FROM thai_isan WHERE thai_word = %s", ("สี",))
+                rows = cursor.fetchall()
+                if rows:
+                    options = [r[0] for r in rows]
+                    tokens_result.append({"word": "สี", "options": options})
+                else:
+                    tokens_result.append({"word": "สี", "options": ["สี"]})
+                i += 1
+                continue
+
             for size in range(4, 0, -1):
                 if i + size <= n:
                     combined_word = ''.join(words[i:i+size])
@@ -347,26 +309,34 @@ def translate_thai(request: SentenceRequest):
                         "SELECT isan_translation FROM thai_isan WHERE thai_word = %s",
                         (combined_word,)
                     )
-                    row = cursor.fetchone()
-                    if row:
-                        translated_pairs.append((combined_word, row[0]))
+                    rows = cursor.fetchall()
+                    if rows:
+                        options = [r[0] for r in rows]
+                        tokens_result.append({"word": combined_word, "options": options})
                         i += size
                         found = True
                         break
             if not found:
-                translated_pairs.append((words[i], words[i]))
+                tokens_result.append({"word": words[i], "options": [words[i]]})
                 i += 1
 
-        thai_tokens = [p[0] for p in translated_pairs]
-        isan_tokens = [p[1] for p in translated_pairs]
-
-        thai_combined = "".join(thai_tokens)
+        # ปรับแต่ง tokens ด้วยฟังก์ชันเดิม
+        thai_tokens = [t["word"] for t in tokens_result]
+        isan_tokens = [t["options"][0] for t in tokens_result]  # ใช้ option แรกเป็นค่า default
         isan_combined = "".join(isan_tokens)
+
+        # อัปเดตค่า default ใน tokens_result หลังปรับแต่ง
+        for idx, t in enumerate(tokens_result):
+            if t["options"]:
+                t["options"][0] = isan_tokens[idx]
 
         return {
             "translated_text": {
                 "input": sentence,
-                "output": {"thai": thai_tokens, "isan": [isan_combined]}
+                "output": {
+                    "tokens": tokens_result,
+                    "isan_combined": isan_combined
+                }
             }
         }
     finally:
