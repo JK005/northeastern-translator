@@ -113,15 +113,23 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
     await speech.stop(); // กัน session ซ้อน
     _sttBuffer = '';
 
+    // ดึง locales จาก speech_to_text
     var systemLocales = await speech.locales();
     debugPrint("Locales available: $systemLocales");
 
-    final thLocale = systemLocales.firstWhere(
-      (l) => l.localeId.startsWith("th"),
-      orElse: () => systemLocales.first,
-    );
+    // ตรวจสอบว่ามี locale หรือไม่
+    stt.LocaleName thLocale;
+    if (systemLocales.isNotEmpty) {
+      thLocale = systemLocales.firstWhere(
+        (l) => l.localeId.startsWith("th"),
+        orElse: () => systemLocales.first,
+      );
+    } else {
+      // ถ้าไม่มี locale เลย → กำหนดค่า default เป็น th-TH
+      thLocale = stt.LocaleName('th-TH', 'ไทย');
+    }
 
-    // ถ้าไม่ใช่ th_TH ให้แจ้งผู้ใช้
+    // ถ้าไม่ใช่ภาษาไทย → แจ้งเตือนผู้ใช้
     if (!thLocale.localeId.startsWith("th") && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -131,7 +139,8 @@ class _TranslatorScreenState extends State<TranslatorScreen> {
     }
 
     setState(() => isListening = true);
-    
+
+    // เริ่มฟังเสียง
     speech.listen(
       onResult: (result) {
         setState(() {
